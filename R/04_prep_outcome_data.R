@@ -8,53 +8,65 @@ con <- DBI::dbConnect(odbc::odbc(), "xsw")
 
 # A&E data ---------------------------------------------------------------
 
-
 ae_dat <- local({
-ae_tbl <- tbl(con,
-               in_catalog(catalog = "Analyst_SQL_Area",
-                          schema = "dbo",
-                          table = "tbl_BNSSG_ECDS")
-)
+  ae_tbl <- tbl(
+    con,
+    in_catalog(
+      catalog = "Analyst_SQL_Area",
+      schema = "dbo",
+      table = "tbl_BNSSG_ECDS"
+    )
+  )
 
-aedat <- ae_tbl %>%
-  filter(Site %in% c('RA701','RVJ01','RA7C2'), !is.na(Decision_To_Admit_Date)) %>%
-  select(ed_los_minutes = Departure_Time_Since_Arrival, departure_dt = Departure_Date, Departure_Time) %>%
-  collect()
+  aedat <- ae_tbl %>%
+    filter(
+      Site %in% c('RA701', 'RVJ01', 'RA7C2'),
+      !is.na(Decision_To_Admit_Date)
+    ) %>%
+    select(
+      ed_los_minutes = Departure_Time_Since_Arrival,
+      departure_dt = Departure_Date,
+      Departure_Time
+    ) %>%
+    collect()
 
-aedat1<-aedat %>%
-  drop_na() %>%
-  mutate(departure_dt=paste0(departure_dt," ",substr(Departure_Time,1,8))) %>%
-  mutate(departure_dt=as.POSIXct(departure_dt)) %>%
-  select(-Departure_Time)
+  aedat1 <- aedat %>%
+    drop_na() %>%
+    mutate(
+      departure_dt = paste0(departure_dt, " ", substr(Departure_Time, 1, 8))
+    ) %>%
+    mutate(departure_dt = as.POSIXct(departure_dt)) %>%
+    select(-Departure_Time)
 
-aedat2<-aedat1 %>%
-  mutate(date=floor_date(departure_dt,"day")) %>%
-  mutate(date=as.Date(substr(date,1,10))) %>%
-  filter(date>=training_begin) %>%
-  filter(date<=training_end) %>%
-  group_by(date) %>%
-  summarise(median_ed_los_minutes=median(ed_los_minutes)) %>%
-  mutate(ed_harm=if_else(median_ed_los_minutes>=ed_threshold,1,0))
+  aedat2 <- aedat1 %>%
+    mutate(date = floor_date(departure_dt, "day")) %>%
+    mutate(date = as.Date(substr(date, 1, 10))) %>%
+    filter(date >= training_begin) %>%
+    filter(date <= training_end) %>%
+    mutate(ed_harm = case_when(
+     ed_los_minutes >= ed_threshold ~ (ed_los_minutes-ed_threshold)/ed_threshold,
+     .default = 0
+    )) %>%
+    summarise(ed_harm = sum(ed_harm), .by = date) %>%
+    arrange(date)
 
-aedat2 %>%
-  mutate(date2=date+1) %>%
-  ggplot() +
-  geom_hline(yintercept=ed_threshold,colour="red") +
-  geom_line(aes(x=date,y=median_ed_los_minutes)) +
-  geom_segment(aes(x=date,xend=date2,
-                   y=max(median_ed_los_minutes)*1.1,yend=max(median_ed_los_minutes)*1.1,colour=factor(ed_harm)),linewidth=5) +
-  scale_colour_manual(values=c("black","red")) +
-  scale_x_date(date_breaks="3 month",labels=date_format("%b\n%Y")) +
-  labs(title="Median time in ED for admitted patients (minutes)",
-       subtitle=paste0("Threshold at ",ed_threshold," minutes")) +
-  theme_bw() +
-  theme(plot.subtitle=element_text(face="italic"),
-        legend.position="none",
-        axis.title.x=element_blank(),
-        axis.title.y=element_blank())
+  aedat2 %>%
+    ggplot(aes(x = date, y = ed_harm)) +
+    geom_path() +
+    scale_colour_manual(values = c("black", "red")) +
+    scale_x_date(date_breaks = "3 month", labels = date_format("%b\n%Y")) +
+    labs(
+      title = "Harm related to delayes in ED"
+    ) +
+    theme_bw() +
+    theme(
+      plot.subtitle = element_text(face = "italic"),
+      legend.position = "none",
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
 
-
-aedat2
+  aedat2
 })
 
 
@@ -88,21 +100,19 @@ swastdat2<-swastdat1 %>%
   mutate(date=as.Date(substr(date,1,10))) %>%
   filter(date>=training_begin) %>%
   filter(date<=training_end) %>%
-  group_by(date) %>%
-  summarise(median_ambulance_response_time_minutes=median(ambulance_response_time_minutes)) %>%
-  mutate(ambulance_harm=if_else(median_ambulance_response_time_minutes>=ambulance_threshold,1,0))
+  mutate(ambulance_harm=case_when(
+    ambulance_response_time_minutes >= ambulance_threshold ~ (ambulance_response_time_minutes - ambulance_threshold)/ambulance_threshold,
+      .default = 0)
+  ) %>%
+  summarise(ambulance_harm = sum(ambulance_harm), .by = date) %>%
+  arrange(date)
 
 swastdat2 %>%
-  mutate(date2=date+1) %>%
-  ggplot() +
-  geom_hline(yintercept=ambulance_threshold,colour="red") +
-  geom_line(aes(x=date,y=median_ambulance_response_time_minutes)) +
-  geom_segment(aes(x=date,xend=date2,
-                   y=max(median_ambulance_response_time_minutes)*1.1,yend=max(median_ambulance_response_time_minutes)*1.1,colour=factor(ambulance_harm)),linewidth=5) + 
+  ggplot(aes(x = date, y = ambulance_harm)) +
+  geom_path()+
   scale_colour_manual(values=c("black","red")) +
   scale_x_date(date_breaks="3 month",date_minor_breaks="1 month",labels=date_format("%b\n%Y")) +
-  labs(title="Median Category 2 ambulance response time (minutes)",
-       subtitle=paste0("Threshold at ",ambulance_threshold," minutes")) +
+  labs(title="Harm related to delayed ambulance response")
   theme_bw() +
   theme(plot.subtitle=element_text(face="italic"),
         legend.position="none",
@@ -113,6 +123,11 @@ swastdat2 %>%
 })
 
 
+left_join(ae_dat, swast_dat) %>%
+  pivot_longer(c(ed_harm, ambulance_harm), names_to = "exposure") %>%
+  ggplot(aes(x = date, y = value, fill = exposure)) +
+  geom_col()
+
 
 # Write output -----------------------------------------------------------
 
@@ -121,24 +136,17 @@ dat <- bind_rows(
   ae_dat %>%
     rename("value" = "median_ed_los_minutes", "harm" = "ed_harm") %>%
     mutate(threshold = ed_threshold) %>%
-    mutate(var = "Median time in ED for admitted patients (minutes)"),
+    mutate(var = "Time in ED for admitted patients (minutes)"),
   swast_dat %>%
     rename(
       "value" = "median_ambulance_response_time_minutes",
       "harm" = "ambulance_harm"
     ) %>%
     mutate(threshold = ambulance_threshold) %>%
-    mutate(var = "Median Category 2 ambulance response time (minutes)")
+    mutate(var = "Category 2 ambulance response time (minutes)")
 ) %>%
-  mutate(severe_harm = if_else(sum(harm) >= 1, 1, 0), .by = date) %>%
-  mutate(sustain_harm = if_else(
-    severe_harm == 1 &
-    slide_sum(severe_harm, before = sustain_window, after = -1) == 0 & 
-    slide_sum(severe_harm, before = -1, after = sustain_window) == sustain_window,
-  1,
-  0
-  )) %>%
-  select(date, var, value, threshold, harm, severe_harm, sustain_harm)
+  mutate(acute_harm = ed_harm + ambulance_harm, .by = date) %>%
+  select(date, var, value, threshold, harm, acute_harm)
 
 dat %>% group_by(var) %>% summarise(n(),min(date),max(date))
 
