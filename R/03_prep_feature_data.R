@@ -2,7 +2,7 @@ source("R/00_librariers.R")
 source("R/01_utils.R")
 source("R/02_meta_params.R")
 
-con <- DBI::dbConnect(odbc::odbc(), "xsw")
+con <- DBI::dbConnect(odbc::odbc(), "xsw") # xsw here is an alias for a data source name (DSN) I have configured via ODBC data sources in windows
 
 
 # FRONTIER DATA

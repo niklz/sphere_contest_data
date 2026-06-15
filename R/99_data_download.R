@@ -9,9 +9,9 @@ org_lookup <- read.csv('data/organisations.csv')  |>
 
 ## chunk up the api request:
 
-# have data from 1st Jan 2023
-start_date  <- lubridate::ymd("2025-09-01")
-end_date  <- lubridate::ymd("2026-10-23")
+# have data from 1st Jan 2026
+start_date  <- lubridate::ymd("2026-02-01")
+end_date  <- lubridate::ymd("2026-03-31")
 chunk_size  <- 3
 
 
@@ -100,7 +100,6 @@ dbWithTransaction(con, {
   
   dbWriteTable(
     conn = con,
-    # This precisely matches your modelling_sql_area.BNSSG\Sebastian.Fox.dbo.frontier path
     name = Id(
       catalog = "modelling_sql_area", 
       schema  = "BNSSG\\Sebastian.Fox", 
