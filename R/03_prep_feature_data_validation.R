@@ -34,16 +34,6 @@ max_stamps <- frontier_tbl %>%
   summarise(max_date = max(date), .by = c(metrics_id, metric_name, metrics_org, org_name)) %>%
   collect()
 
-# frontier_bkup_tbl <-
-#   tbl(
-#     con,
-#     in_catalog(
-#       catalog = "Analyst_SQL_Area",
-#       schema = "CTCC",
-#       table = "api_output_submission_history"
-#     )
-#   )
-
 
 frontier_bkup_tbl <-
   tbl(
@@ -99,21 +89,56 @@ frontier_bkup_tbl_2 %>%
 
 
 
-  
-# frontier_missing_tbl <- frontier_bkup_tbl %>%
-#   left_join(org_lkup_tbl) %>%
-#   # filter(metric_code %in% frontier_missing_metrics) %>%
-#   select(date = datetime, metrics_id = metric_code, metric_name = metrics, metrics_org = organisation_code, org_name = organisation_name, value = value) %>%
-#   left_join(max_stamps, by = join_by(metrics_id == metrics_id, metric_name == metric_name, metrics_org == metrics_org, org_name == org_name), copy = TRUE) %>%
-#   filter(date > max_date) %>%
-#   select(-max_date) %>%
-#   distinct() %>%
-#   mutate(value = as.numeric(value)) 
-
 missing_lookup <- frontier_recalculated_df %>%
   distinct(metrics_id, metrics_org) 
 
 min_recalc_dat <- frontier_recalculated_df$date %>% min()
+
+frontier_missing_metrics <- c(
+  "14001",
+  "14002",
+  "14003",
+  "14004",
+  "14006",
+  "14031",
+  "14033",
+  "14036",
+  "14043",
+  "14044",
+  "14045",
+  "14035",
+  "14040",
+  "14049",
+  "14041",
+  "14042",
+  "14055",
+  "14052",
+  "14053",
+  "14054",
+  "14056",
+  "14050",
+  "14051",
+  "14007",
+  "14018",
+  "14058",
+  "14047",
+  "14057",
+  "14046",
+  "14047",
+  "14048",
+  "14017",
+  "14032",
+  "14034",
+  "14037",
+  "14038",
+  "14039",
+  "14040"
+)
+
+frontier_missing_tbl <- frontier_tbl %>%
+  filter(date > training_end) %>%
+  filter(metrics_id %in% frontier_missing_metrics)
+
 
 frontier_df <- frontier_tbl %>% 
   filter(date > training_end) %>%
@@ -122,6 +147,7 @@ frontier_df <- frontier_tbl %>%
     filter(., date > min_recalc_dat) %>% inner_join(missing_lookup, by = c("metrics_id", "metrics_org"), copy = TRUE),
     by = c("date", "metrics_id", "metrics_org", "org_name") 
   ) %>%
+  union_all(frontier_missing_tbl) %>%
   union_all(frontier_recalculated_df, copy = TRUE) %>%
   rename(dt = date, 
   metric_id = metrics_id,
@@ -257,26 +283,32 @@ metric_recodes <- metric_data$metric_name %>%
   set_names(., .) %>%
   str_wrap(40)
 
-max_pts <- 5000
+max_pts <- 10000
 
 pal <- c("uec_daily" = "lightblue", "frontier" = "orange")
 
 Cairo::CairoPDF("materials/feature_time_series_validation.pdf", height = 14, width = 21, pointsize = 8)
 metric_data %>%
   filter(!is.na(dt)) %>%
-  filter(n() <= max_pts | row_number() %% (n() %/% max_pts) == 0, .by = metric_name) %>%
+  arrange(dt) %>%
+  filter(
+    n() <= max_pts | row_number() %% max(1, (n() %/% max_pts)) == 0, 
+    .by = metric_name
+  ) %>%
   mutate(metric_org = str_c(metric_name, "\n", coverage)) %>%
   mutate(id = cur_group_id(), .by = metric_org) %>%
   mutate(grp = id %/% 9) %>%
   # mutate(metric_name = recode(metric_name, !!!metric_recodes)) %>%
   nest(.by = grp) %>%
   mutate(plot = map(data, \(d) d %>%
-    arrange(dt) %>%
+    
     ggplot(aes(x = dt, y = value)) +
   #   geom_bin2d(bins = 100) + 
   # scale_fill_viridis_c() +
     geom_path(aes(col = source)) +
+    geom_rug(sides = "b") +
     scale_colour_manual(values = pal) +
+    scale_x_date(limits = c(training_end, validation_end)) +
     # ggrastr::rasterise(geom_path(), dpi = 300) + 
     facet_wrap(vars(metric_org), scales = "free") +
     labs(x = "date") 
