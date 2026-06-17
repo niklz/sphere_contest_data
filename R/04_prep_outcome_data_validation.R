@@ -2,15 +2,24 @@ source("R/00_librariers.R")
 source("R/01_utils.R")
 source("R/02_meta_params.R")
 
+# 17/06/2026 !! NOTE !! we no longer use this code to generate outcome due to 
+# missing nctr site scaling bug which was present during training data generation 
+# the bug is fixed here for completeness but we use an older extract to produce assessment data
+
 
 con <- DBI::dbConnect(odbc::odbc(), "xsw")
-
 
 # A&E data ---------------------------------------------------------------
 
 ae_dat <- local({
   mort_mod <- readRDS("data/mort_effects_output_multilvl.RDS") %>% `[[`("mort_mod_raw")
   vw_impute_rec <- readRDS("data/vw_impute_rec.RDS")
+  site_core_stock <- tibble(site = c("BRISTOL ROYAL INFIRMARY",
+                                   "WESTON GENERAL HOSPITAL",
+                                   "SOUTHMEAD HOSPITAL"),
+                         core_stock = c(24, 20, 13)
+                         # core_stock = c(692, 271, 878)
+                         )
 
   nctr_tbl <- tbl(
     con,
@@ -27,7 +36,10 @@ ae_dat <- local({
     filter(Criteria_To_Reside == "N", Bed_Type == "Medicine") %>%
     mutate(Site_Name = stringr::str_to_upper(Site_Name)) %>%
     summarise(nctr = n(), .by = Site_Name) %>%
-    collect()
+    collect() %>%
+    left_join(site_core_stock, by = join_by(Site_Name == site)) %>%
+    mutate(nctr = nctr/core_stock) %>%
+    select(-core_stock)
 
   ae_tbl <- tbl(
     con,
@@ -156,22 +168,22 @@ ae_dat <- local({
         "18:00-23:59" = "18:00:00"
       )
     ) %>%
-    mutate(arrival_month = factor(month.name[month(arrival_dt)])) %>%
-    mutate(arrival_month = `levels<-`(arrival_month, month.name)) %>%
+    mutate(arrival_month = factor(month.name[month(arrival_dt)], levels = month.name)) %>%
     mutate(n_ed = 0) # vastly the case in the actual data
 
 
   # Produce model estimated mortality probabilities
+
   aedat2 <- recipes::bake(vw_impute_rec, new_data = mutate(aedat, vw_score = NA_real_))
 
   model_estimated_deaths_full <- aedat2 %>%
     mutate(across(c(dta_time, time_to_dta), \(x) x / 60)) %>%
-    predict(mort_mod, newdata = ., type = "response", re.form = NA)
+    lme4:::predict.merMod(mort_mod, newdata = ., type = "response", re.form = NA)
 
   model_estimated_deaths_nodta <- aedat2 %>%
     mutate(across(c(dta_time, time_to_dta), \(x) x / 60)) %>%
     mutate(dta_time = 0) %>%
-    predict(mort_mod, newdata = ., type = "response", re.form = NA)
+    lme4:::predict.merMod(mort_mod, newdata = ., type = "response", re.form = NA)
 
   model_estimated_avoiable_deaths <- model_estimated_deaths_full - model_estimated_deaths_nodta
   
