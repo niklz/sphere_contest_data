@@ -245,14 +245,14 @@ metric_sum <- metric_data %>%
     frequency == 4320 ~ str_c("Every 3 days at ", hour, "h00"),
     .default = "Not fixed"
   )) %>%
-  select(-c(min, max, hour, day)) %>%
+  select(-c(hour, day)) %>%
   mutate(metric_label = str_c(metric_name, coverage_label, sep = " - ")) %>%
   distinct()
 
 readr::write_csv(metric_sum, file = "data/metric_metadata.csv")
 
 metric_sum %>%
-    filter(period == "Training period") %>%
+    # filter(period == "Training period") %>%
 ggplot(aes(x = min, xend = max, y = metric_label, yend = metric_label, col = freq_label)) +
   geom_segment() +
   labs(x = "Date", y = "Feature", col = "") +

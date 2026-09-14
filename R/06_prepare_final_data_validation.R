@@ -6,7 +6,12 @@ source("R/02_meta_params.R")
 # Feature/Outcome data -----------------------------------------------------------
 
 feature_data <- read_csv("data/turingAI_feature_data_validation.csv")
-outcome_data <- read_csv("data/turingAI_outcome_data_validation.csv")
+
+# outcome_data <- read_csv("data/turingAI_outcome_data_validation.csv")
+# Take outcome from old extract pre-fix of NCTR scaling bug for continuity
+outcome_data <- unzip("data/turingAI_forecasting_challenge_validation_dataset_first.zip") %>%
+  read_csv() %>%
+  filter(variable_type == "outcome")
 
 # pivot outcome to long format
 
@@ -14,13 +19,7 @@ feature_data %>%
   select(-source) %>%
   mutate(variable_type = "feature") %>%
   bind_rows(
-outcome_data %>%
-  select(date, estimated_avoidable_deaths = model_estimated_avoiable_deaths) %>%
-  rename(dt = date) %>%
-  pivot_longer(cols = -dt, names_to = "metric_name") %>%
-  mutate(coverage = "NHS Bristol, North Somerset, South Gloucestershire Integrated Care Board",
-         coverage_label = "BNSSG",
-        variable_type = "outcome")
+outcome_data 
   ) %>%
   write_csv("data/turingAI_forecasting_challenge_validation_dataset.csv")
 
